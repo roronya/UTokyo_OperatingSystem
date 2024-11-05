@@ -24,7 +24,7 @@ typedef struct {
   long capacity;                /* 容量 */
   long * a;                     /* 中身(capacity要素の配列) */
   pthread_mutex_t m[1];
-  pthread_cond_t c[2]; // 0:put用, 1:get用
+  pthread_cond_t c[2];          /* 0:put用, 1:get用 */
 } bounded_buffer_t;
 
 /* 容量 capacity で初期化 */
@@ -47,6 +47,7 @@ void bounded_buffer_init(bounded_buffer_t * bb, long capacity) {
  */
 int bounded_buffer_put(bounded_buffer_t * bb, long x) {
   assert(x >= 0);
+  pthread_mutex_lock(bb->m);
   long g,p,cap;
   while(1) {
     g = bb->n_gets;
@@ -58,20 +59,8 @@ int bounded_buffer_put(bounded_buffer_t * bb, long x) {
   bb->a[p % cap] = x;
   bb->n_puts = p + 1;
   if (p - g == 0) pthread_cond_broadcast(&bb->c[1]);
-  return 1;
-  
-/**
-  long g = bb->n_gets;
-  long p = bb->n_puts;
-  long cap = bb->capacity;
-  assert(x >= 0);
-  if (p - g >= cap) {
-    return 0;                   /* NG */
-  }
-  bb->a[p % cap] = x;
-  bb->n_puts = p + 1;
-  return 1;                     /* OK */
-**/
+  pthread_mutex_unlock(bb->m);
+  return 1;  
 }
 
 /* 要素を取り出す
@@ -79,6 +68,7 @@ int bounded_buffer_put(bounded_buffer_t * bb, long x) {
  * 以下はそのままだと空の場合は-1を返す(間違い)
  */
 long bounded_buffer_get(bounded_buffer_t * bb) {
+  pthread_mutex_lock(bb->m);
   long g,p,cap;
   while(1) {
     g = bb->n_gets;
@@ -90,20 +80,9 @@ long bounded_buffer_get(bounded_buffer_t * bb) {
   long x = bb->a[g % cap];
   bb->n_gets = g + 1;
   if (p - g == bb->capacity) pthread_cond_broadcast(&bb->c[0]);
+  pthread_mutex_unlock(bb->m);
   assert(x >= 0);
   return x;
-/**
-  long g = bb->n_gets;
-  long p = bb->n_puts;
-  long cap = bb->capacity;
-  if (p - g <= 0) {
-    return -1;                  /* 空 */    
-  }
-  long x = bb->a[g % cap];
-  bb->n_gets = g + 1;
-  assert(x >= 0);
-  return x;
-**/
 }
 
 int main(int argc, char ** argv) {

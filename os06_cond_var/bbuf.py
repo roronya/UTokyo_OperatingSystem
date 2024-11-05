@@ -38,20 +38,29 @@ class bounded_buffer:
         self.capacity = capacity
         self.n_gets = 0
         self.n_puts = 0
+        self.m = threading.Lock()
+        self.c = [threading.Condition(self.m), threading.Condition(self.m)]    
     def put(self, x):
         """
         要素を追加 
         満杯だったら待つようにするのが課題
         以下はそのままだと満杯の場合は0を返す(間違い)
         """
-        g = self.n_gets
-        p = self.n_puts
-        cap = self.capacity
+        self.m.acquire()
+        g, p, cap = None, None, None
+        while True:
+            g = self.n_gets
+            p = self.n_puts
+            cap = self.capacity
+            if p - g < cap:
+                break
+            self.c[0].wait()            
         assert(x >= 0), x
-        if p - g >= cap:
-            return 0 # NG
         self.a[p % cap] = x
         self.n_puts = p + 1
+        if p - g == 0:
+            self.c[1].notify_all()
+        self.m.release()
         return 1 # OK
     def get(self):
         """
@@ -59,13 +68,20 @@ class bounded_buffer:
         空だったら待つようにするのが課題
         以下はそのままだと空の場合は-1を返す(間違い)
         """
-        g = self.n_gets
-        p = self.n_puts
-        cap = self.capacity
-        if p - g <= 0:
-            return -1 # 空 
+        self.m.acquire()
+        g, p, cap = None, None, None
+        while True:
+            g = self.n_gets
+            p = self.n_puts
+            cap = self.capacity
+            if p - g > 0:
+                break
+            self.c[1].wait()
         x = self.a[g % cap]
         self.n_gets = g + 1
+        if p - g == self.capacity:
+            self.c[0].notify_all()
+        self.m.release()
         assert(x >= 0), x
         return x
 
